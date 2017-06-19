@@ -182,18 +182,19 @@ CONTAINS
     if(m_ntarget == 4) then
       species = ['H2 ','O2 ','N2 ','H2O']
     elseif(m_ntarget == 1) then
+      !species =['N2']
       species = ['Ar']
     else
       stop ' No. of species urecognized'
     endif
-
+    
     L=0!total counter on rates
     kkloop: do kk=1,size(sigmaIN)
       do kkk=1,size(sigmaIN(kk)%sigma)
         L=L+1
         found = .false.;
         do k = 1,size(species)
-          if (trim(sigmaIN(kk)%sigma(kkk)%molecule)== trim(species(k))) then
+        if (trim(sigmaIN(kk)%sigma(kkk)%molecule)== trim(species(k))) then
             sigmaIN(kk)%sigma(kkk)%indexX = k
             found = .true.
             if(kk==3 .and. k==2 .and. i3body==1) then  !the first of the O2
@@ -243,7 +244,7 @@ CONTAINS
 
 
       allocate(ep(n),W(n), epm(n), sepm(n), dep(n), sigmaE(n), sigmaMM(n), sigmaM1(n), sigmaM(n), F(n), F0(n), igr(n), Nuv(n,n), &
-           P0(n), D0(n), D1(n), Fl(n), Fr(n), tempVar(n,2), A1(n), A2(n), A3(n))
+           P0(n), D0(n), D1(n), Fl(n), Fr(n), tempVar(n,2), A1(n),A2(n),A3(n))
       allocate(A1_(n,n), A2_(n,n), A3_(n,n), Fr_(n,n), Fl_(n,n), Te_(n))
 
       A1=0d0;A2=0d0;A3=0d0;           !energy integrals-eq.34,35,36 Hagelaar article
@@ -305,9 +306,9 @@ CONTAINS
             sigmaMM(i) = sigmaMM(i) + evaluateSplineExp(sigmaEF(j)%spline%dxb, &
                  sigmaEF(j)%spline%xb, sigmaEF(j)%spline%coeffs, sigmaEF(j)%spline%nvar, ep(i))*m_X(k);
             !elastic momentum transfer cross section, eq.42 Hagelaar article
-           ! sigmaE(i) = sigmaE(i) + evaluateSplineExp(sigmaEL(j)%spline%dxb, &
-           !      sigmaEL(j)%spline%xb, sigmaEL(j)%spline%coeffs, sigmaEL(j)%spline%nvar, ep(i))*m_X(k);
-            sigmaE(i)=0d0;
+            sigmaE(i) = sigmaE(i) + evaluateSplineExp(sigmaEL(j)%spline%dxb, &
+                 sigmaEL(j)%spline%xb, sigmaEL(j)%spline%coeffs, sigmaEL(j)%spline%nvar, ep(i))*m_X(k);
+           ! sigmaE(i)=0d0;
           enddo
         end if
 
@@ -321,13 +322,13 @@ CONTAINS
   end Subroutine processCrossSections
 
 !!!subroutine needed to solve the Boltzmann equation
-  Subroutine solveBoltzmann(E_N, isTdin,Meanenergy,mean_energy_K)
+  Subroutine solveBoltzmann(E_N,isTdin,Meanenergy,mean_energy_K,sigmaM)
     use solver, only: DGESV
     Implicit None
     real(8), intent(IN) ::E_N
     logical, intent(IN), optional :: isTdin !isTdin is a logical variable
                                             !true=if E_N is in Td;false=if E_N is Vm^2
-    real(8), intent(OUT) ::Meanenergy,mean_energy_K
+    real(8), intent(OUT) ::Meanenergy,mean_energy_K,sigmaM(n)
 
     integer :: i,ii,j,k,kk,kkk, iteration, endV, iL, iH, iH0
     real(8) :: snu(3), factor, loss, epsI, epsJ,gi,gj,eps1,eps2, nA, pik, E_Nsq, oldval, ionFactor(2)   !,nu
@@ -341,7 +342,7 @@ CONTAINS
     if(present(isTdin)) then
       if(isTdin) E_Nsq = (E_N*m_Td2Vmsq)**2d0
     endif
-
+print*,E_Nsq
     if(m_debug) then
       print*,(trim(species(k)),k=1,m_ntarget);
       print*,'epm,      F,    F0'
@@ -377,8 +378,7 @@ CONTAINS
           k = sigmaIN(kk)%sigma(kkk)%indexX
           if(k <= 0) cycle
           factor = m_GAMMA*m_X(k);
-          if(kk == 3 .and. is3B(kkk))  factor=factor*m_ng/m_ng0
-
+          !if(kk == 3 .and. is3B(kkk))  factor=factor*m_ng/m_ng0
           endV = ubound(sigmaIN(kk)%sigma(kkk)%val,1)
 
           if (kk < 3) then
@@ -403,7 +403,6 @@ CONTAINS
                 gi = 0d0
               end if
             end if
-
 !if (isnan(gi)  .or. .not. abs(gi) < 1d99) cycle
             eps2=ep(i);
             if (kk <= 2 .and. eps2 < loss) cycle;
@@ -668,6 +667,7 @@ CONTAINS
 
 
       nui=sum(matmul(Nuv,F));
+
       do i = 1,n
           A(i,i) = A(i,i) + igr(i) * nui
        do j =1,n
@@ -790,6 +790,7 @@ CONTAINS
 !pause "A matrix"
       end if
 
+!print*,i
       CALL DGESV( N, 1, A, ubound(A,1) , IPIV, B, ubound(B,1), i )
       if(m_debug) print'("FLAG ",i5,1p9999e12.4)',i,B(1:5)
 
@@ -822,7 +823,10 @@ CONTAINS
         !Te = max(getTe(),m_T);
         Te = max(mean_energy_K,m_T);
         do k = ii+1,n
+print*,F(ii), m_e, m_kB, Te, epm(k), epm(ii)
+!pause
           F(k) = F(ii)*dexp(-m_e/m_kB/Te*(epm(k)-epm(ii)));
+print*,F(k)
      !     print*,epm(k)-epm(ii)
         enddo
       !pause
@@ -855,7 +859,7 @@ CONTAINS
         do i = 1,n;
           print'(1p123e12.4)',epm(i),F(i),P0(i),F0(i);
         enddo
-        pause "errorF > errorO "
+      !  pause "errorF > errorO "
       endif
 
       errorO = errorF
@@ -901,7 +905,7 @@ CONTAINS
             print*,trim(rates(i)%Rmolecule), ' ',trim(rates(i)%Rtype),rates(i)%Rrate;
           endif
         enddo
-        pause 'End solveBoltzmann'
+       ! pause 'End solveBoltzmann'
       endif
     end if
 
@@ -989,62 +993,30 @@ CONTAINS
 !!!subroutine needed to calculated the Temperature usign the eq.37, Hagelaar article
   subroutine getTe(mean_energy_K, Meanenergy)
     Implicit None
-    integer :: i,nval,k
+    integer :: i
     real(8), INTENT(OUT) :: mean_energy_K, Meanenergy
     real(8) :: factor, epsI, eps1, eps2, gi,agi, rooteps1gi, rooteps2gi, pik, erfrooteps1gi, erfrooteps2gi
 
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!mean energy verification!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!!    real(8), pointer :: bolsig(:,:)
-!!!!    character(len=80) :: fileF0
-
-!!!!    !CAMBIO
-!!!!    fileF0 = '../input/F0_500.dat'
-!!!!    open(123,file=trim(fileF0))
-!!!!    read(123,*,ERR=10,END=20) nval
-!!!!    allocate(bolsig(nval,2))
-!!!!    do k=1,nval-1
-!!!!       read(123,*,ERR=10,END=20) bolsig(k,1:2)
-!!!!       !print*, F(k)
-!!!!    end do
-!!!!    !pause
-!!!!10 CONTINUE
-!!!!20 CONTINUE
-!!!!    close(123)
-
-!!!!open(3999,file='mean_energy', action='write',status='unknown')
     Meanenergy=0d0;
     do i = 1,n
-!!!!    do i = 1,nval !n
       factor = F(i);
-!!!!      factor = bolsig(i,2)
-
       epsI = epm(i);
-!!!!      epsI = bolsig(i,1);
       if(F(i) <= 0d0 .or. F(min(i+1,n)) <= 0d0 .or. F(max(i-1,1)) <= 0d0) cycle
-!!!!      if(bolsig(i,2) <= 0d0 .or. bolsig(min(i+1,nval),2) <= 0d0 .or. bolsig(max(i-1,1),2) <= 0d0) cycle
       if (i == 1) then
         eps1=0d0;
         gi = log(F(i+1)/F(i))/(epm(i+1)-epm(i));
-!!!!        gi = log(bolsig(i+1,2)/bolsig(i,2))/(bolsig(i+1,1)-bolsig(i,1));
       else
         eps1=ep(i-1);
-!!!!        eps1=(bolsig(i,1)+bolsig(i-1,1))/2;
         if (i < n .and. F(min(i+1,n)) > 0d0) then
-!!!!        if (i < nval .and. bolsig(min(i+1,nval),2) > 0d0) then
           gi = -log(F(i+1)/F(i-1))/(epm(i+1)-epm(i-1));
-!!!!          gi = -log(bolsig(i+1,2)/bolsig(i-1,2))/(bolsig(i+1,1)-bolsig(i-1,1));
         else
           gi = -log(F(i)/F(i-1))/(epm(i)-epm(i-1));
-!!!!          gi = -log(bolsig(i,2)/bolsig(i-1,2))/(bolsig(i,1)-bolsig(i-1,1));
         end if
       end if
       gi = min(abs(gi),7d0)
       agi = abs(gi);
       eps2=ep(i);
-!!!!      eps2=(bolsig(i+1,1)+bolsig(i,1))/2;
-      rooteps1gi=sqrt(abs(eps1*gi));  !gi.0
+      rooteps1gi=sqrt(abs(eps1*gi));
       rooteps2gi=sqrt(abs(eps2*gi));
       erfrooteps1gi = erf(rooteps1gi)
       erfrooteps2gi = erf(rooteps2gi)
@@ -1055,19 +1027,10 @@ CONTAINS
       Meanenergy=Meanenergy+factor*pik;
     end do
 
-!!!!    write(3999,*)'mean energy:', Meanenergy
-!Electron energy in K
-      !pause
     mean_energy_K=Meanenergy*2d0/3d0*m_ev2K;
 
-!!!!    write(3999,*) 'Temperature',mean_energy_K
-!!!!    close(3999)
-!!!!    pause
-
-    !out=Meanenergy*2/3*m_ev2K;
     if(isnan(mean_energy_K) ) stop
 
-    !if(isnan(out) ) stop
   end subroutine getTe
 
   subroutine getTeDer
@@ -1583,7 +1546,7 @@ CONTAINS
       k=1
       call spline(Fvals%nxb, Fvals%xb, Fvals%coeffs(:,4,k), Fvals%coeffs(:,3,k) , Fvals%coeffs(:,2,k), Fvals%coeffs(:,1,k))
     endif
-    call processCrossSections(m_X,m_T, m_ne, ubound(F,1) ,Ymax, m_newtIter)
+    !call processCrossSections(m_X,m_T, m_ne, ubound(F,1) ,Ymax,m_newtIter,1000,sigmaM)
     if(k > 0) then
       do i = 1, ubound(F,1)
         call seval(epm(i), Fvals)
@@ -1665,70 +1628,119 @@ End Module ModBoltzmann
 program testBoltz
 
   Use ModBoltzmann
-  !Use arrhenius
   Implicit None
 
-  real(8) :: esp(101)
-  real(8) :: EbyN(101),Temp(101),rate_ion(101),rate_exc(101)
-  real(8) :: a_coeff,b_coeff,c_coeff,err
+  real(8) :: esp(1)
+  real(8) :: EbyN(1)
   real(8) :: Temperature, Composition(m_speciesCoupled)
-  real(8) :: Meanenergy,mean_energy_K,rateEXC,rateION !,rateATT,rateEL,rateEFF
-  real(8) :: electronDensity, degreeIonization(101)
-  integer :: i,j,k,m
-  character(140) :: rate_file
-  character(20) :: E_N
-  character(150) :: sol_file
-  
+  real(8) :: Meanenergy,mean_energy_K,rateEXC,rateION
+  real(8) :: electronDensity, degreeIonization(1)
+  integer :: i,j,k,m,l
+  character(120) :: rate_file_ion, rate_file_exc
+  character(120) :: mu_e_f_file, mu_sm_file, energy_file
 !-----
-
 
   Call readCrossSections
 
 !plascomCM inputs
   Composition = [1d0]
-  do k=1,101
-     EbyN(k) = 0.d0+1.d0*k;
-     esp(k) =2.97d0+0.03d0*k
-  enddo
-  !EbyN=[300d0];
+!  EbyN(1)=0.1d0
+!  degreeIonization(1)=0.33113112148259077d0
+! degreeIonization(2)=0.57543993733715659d0
+! degreeIonization(3)=1d0 
+  esp(1)=-6d0
+!  do l=1,10
+!     EbyN(l)=0d0 + 0.1d0*l
+!  end do
+
+!  do k=1,50
+k=2
+     EbyN(1) = 0.d0+10.d0*k;
+     !EbyN(k+10) = 0.d0+10.d0*k;
+!     esp(k+1) = esp(1) + 0.12d0*k;
+!  enddo
+!  do i=1,51
+i=1
+     degreeIonization(i) = 10d0**(esp(i))
+!  enddo
+!print*,degreeIonization(1)
+mu_e_f_file = 'check_fit.dat'
+mu_sm_file = 'check_fit_sM.dat' 
+energy_file = 'energy_file_2.dat'
+rate_file_ion = 'ratecoeff_ion.dat'
+rate_file_exc = 'ratecoeff_exc.dat'
+
+  open(2000,file = trim(energy_file),action='write',status='unknown')
+  open(3000,file = trim(mu_e_f_file),action='write',status='unknown')
+  open(4000,file = trim(mu_sm_file),action='write',status='unknown')
+  
+  open(5001,file = trim(rate_file_ion),action='write',status='unknown')
+  open(5002,file = trim(rate_file_exc),action='write',status='unknown')
+
+  write(2000,*) size(EbyN)
+  write(2000,*) size(degreeIonization)
+  write(2000,*) EbyN
+  write(2000,*) degreeIonization
+  write(3000,*) size(EbyN)
+  write(3000,*) size(degreeIonization)
+  write(3000,*) EbyN
+  write(3000,*) degreeIonization
+  write(4000,*) size(EbyN)
+  write(4000,*) size(degreeIonization)
+  write(4000,*) EbyN
+  write(4000,*) degreeIonization
+
+  write(5001,*) size(EbyN)
+  write(5001,*) size(degreeIonization)
+  write(5001,*) EbyN
+  write(5001,*) degreeIonization
+  write(5002,*) size(EbyN)
+  write(5002,*) size(degreeIonization)
+  write(5002,*) EbyN
+  write(5002,*) degreeIonization
+ 
   Temperature = 3d2
-  do m = 1,size(esp)
 
-     degreeIonization = 10d0**(-esp(m))
-     electronDensity = degreeIonization(m) * m_P/m_kB/Temperature 
-     rate_file = 'ratecoeff_meanenergy.dat'
-     open(3000,file = trim(rate_file),action='write',status='unknown')
-     write(3000,*)m,degreeIonization
+  do m=1,size(degreeIonization)
+     electronDensity = degreeIonization(m) * m_P/m_kB/Temperature
+
+     write(2000,*) m
+     write(3000,*) m, 'Ionization degree:',degreeIonization(m)
+     write(4000,*) m, 'Ionization degree:',degreeIonization(m)
+
+     write(5001,*) m
+     write(5002,*) m
+
      do j = 1,size(EbyN) 
-        Call processCrossSections(Composition, Temperature, electronDensity, 500, 50d0, 1000, TinitIn=100000d0)
 
-        !print*,'Solving, electronDensity=',electronDensity,'E/N=',EbyN 
-        print*,'Solving, electronDensity=',electronDensity,'E/N=',EbyN(j)
-        CALL solveBoltzmann(EbyN(j),.true.,Meanenergy,mean_energy_K)
+        Call processCrossSections(Composition, Temperature, electronDensity, 500, 50d0, 2500, TinitIn=100000d0)
+        print*,'Solving E/N=',EbyN(j),'ion_degree',degreeIonization(m)
+        CALL solveBoltzmann(EbyN(j),.true.,Meanenergy,mean_energy_K,sigmaM)
         !CALL solveBoltzmann(EbyN,.true.,Meanenergy)
 
-        write(E_N, '(f6.2)') EbyN(j)
-        sol_file='/F0_EbyN_'//trim(E_N)//'.dat'
-        open(123,file = trim(sol_file),action='write',status='unknown')
-        !open(123,file='F0.dat')
-        do i = 1,n
-           write(123,*)ep(i),epm(i),F(i)
+        write(3000,*) j, 'Electric field:',EbyN(j)
+        write(4000,*) j, 'Electric field:',EbyN(j)
+        do i=1,n
+           write(3000,*) ep(i),epm(i),F(i),Meanenergy,mean_energy_K
         enddo
-        close(123)
+        write(4000,*) sigmaM
   
-        Call printVals('EXCITATION', 'Ar',rateEXC)
-        Call printVals('IONIZATION', 'Ar',rateION)
-        !Call printVals('ATTACHMENT', 'Ar',rateATT)
-        !Call printVals('ELASTIC', 'Ar',rateEL)
-        !Call printVals('EFFECTIVE', 'Ar',rateEFF)
-        Temp(j)=mean_energy_K
-        rate_ion(j)=rateION
-        rate_exc(j)=rateEXC
-    
-        write(3000,*)EbyN(j),rateION
+        Call printVals('EXCITATION', 'N2',rateEXC)
+        Call printVals('IONIZATION', 'N2',rateION)
+
+        write(2000,*) ,Meanenergy,rateION
+        write(5001,*) rateION
+        write(5002,*) rateEXC
+
      end do
   end do
+
+  close(2000)
   close(3000)
+  close(4000)
+  close(5001)
+  close(5002)
+
   stop
 end program testBoltz
 
